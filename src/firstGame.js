@@ -15,32 +15,51 @@ import poltronaImg from "./assets/firstGame/prop_poltrona.png";
 import sofaImg from "./assets/firstGame/prop_sofa.png";
 import vasoImg from "./assets/firstGame/prop_vaso.png";
 
-function createGame() {
-  let bia, cyber, controls, isTurning, physics, scene;
+function createGame(callbackSuccess, callbackFail) {
+  let bia, cyber, controls, isTurning, scene, registry, events;
 
-  var target = new Phaser.Math.Vector2();
-  let direction = "bottom";
+  let squareSize = 52;
+  let isSliding = false;
+  let isSuccess = false;
+  let isFail = false;
+  let direction = "right";
+  let speedAnimation = "regular";
 
   const DIRECTIONS = ["top", "right", "bottom", "left"];
 
-  function calculatePosition(square, size = 1) {
-    return square * 52 + (size * 52) / 2;
+  const velocityControl = {
+    slow: { pixelPerTime: squareSize / 2, time: 2000 },
+    regular: { pixelPerTime: squareSize, time: 1000 },
+    fast: { pixelPerTime: squareSize * 2, time: 500 },
+  };
+
+  function changeSpeedAnimation(sliderValue) {
+    if (sliderValue < 50) {
+      speedAnimation = "slow";
+    } else if (sliderValue === 50) {
+      speedAnimation = "regular";
+    } else {
+      speedAnimation = "fast";
+    }
   }
 
-  function timeout(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+  function calculatePosition(square, itemSize = 1) {
+    return square * squareSize + (itemSize * squareSize) / 2;
   }
 
   async function sleep(ms, fn, ...args) {
-    await timeout(ms);
+    const timeout = new Promise((resolve) => setTimeout(resolve, ms));
+    await timeout;
+
     return await fn(...args);
   }
 
   async function turnRight() {
-    if (isTurning) return;
+    /// just keyboard
+    if (isTurning || isFail) return;
 
     isTurning = true;
-
+    //
     const position = DIRECTIONS.indexOf(direction);
     if (position < 3) {
       direction = DIRECTIONS[position + 1];
@@ -50,17 +69,13 @@ function createGame() {
 
     bia.play(direction, true);
 
-    await sleep(250, () => {
+    await sleep(300, () => {
       isTurning = false;
-      console.log(direction);
     });
-    // setTimeout(() => {
-    //   isTurning = false;
-    // }, 500);
   }
 
   async function turnLeft() {
-    if (isTurning) return;
+    if (isTurning || isFail) return;
 
     isTurning = true;
 
@@ -75,77 +90,127 @@ function createGame() {
     bia.play(direction, true);
 
     await sleep(300, () => (isTurning = false));
-    // setTimeout(() => {
     //   isTurning = false;
     // }, 500);
   }
 
-  async function moveAnimation(player) {
-    const frame = 52;
-    const time = 52;
+  function stopActiveMove(player) {
+    player?.setVelocityY(0);
+    player?.setVelocityX(0);
+  }
 
-    target.x = player.x;
-    target.y = player.y + frame;
-
-    const up = Math.round(player.y - frame);
-    const right = Math.round(player.x + frame);
-    const down = Math.round(player.y + frame);
-    const left = Math.round(player.x - frame);
-
+  async function move(player, frame) {
     if (direction === "top") {
-      physics.moveToObject(player, { x: player.x, y: up }, time);
+      player?.setVelocityY(frame * -1);
     } else if (direction === "right") {
-      physics.moveToObject(player, { x: right, y: player.y }, time);
+      player?.setVelocityX(frame);
     } else if (direction === "bottom") {
-      physics.moveToObject(player, { x: player.x, y: down }, time);
+      player?.setVelocityY(frame);
     } else if (direction === "left") {
-      physics.moveToObject(player, { x: left, y: player.y }, time);
+      player?.setVelocityX(frame * -1);
     }
 
-    setTimeout(() => {
-      console.log("X", player.x, "Y", player.y);
-    }, 1500);
-
-    // setTimeout(() => {
-    //   player.setVelocityY(0);
-    //   player.setVelocityX(0);
-    // }, 1000);
-    await sleep(1000, () => {
-      player.setVelocityY(0);
-      player.setVelocityX(0);
+    await sleep(velocityControl[speedAnimation].time, () => {
+      stopActiveMove(player);
     });
   }
 
   async function moveBia() {
-    // if (colide) {
-    //   bia.setVelocityY(0);
-    //   bia.setVelocityX(0);
-    //   bia.anims.play(`collide-${direction}`, true);
-    // } else {
+    if (isFail) return;
+
     bia.anims.play(`walk-${direction}`, true);
-    await moveAnimation(bia);
-    // }
+
+    await move(bia, velocityControl[speedAnimation].pixelPerTime);
   }
 
-  function collideConfirm() {
+  async function collideConfirm() {
+    if (isFail) return;
+    isFail = true;
+
+    stopActiveMove(bia);
+
     bia.anims.play(`collide-${direction}`, true);
+
+    await sleep(velocityControl[speedAnimation].time, () =>
+      callbackFail("Cuidado com os obstáculos.")
+    );
+    console.log("bateu nas coisas recalcule filhao");
   }
 
-  function slidingConfirm() {
+  async function collideWorldConfirm() {
+    if (isFail) return;
+    isFail = true;
+
+    stopActiveMove(bia);
+    bia.anims.play(`collide-${direction}`, true);
+
+    await sleep(velocityControl[speedAnimation].time, () =>
+      callbackFail("Ops! Bati nas paredes. Tente desviar delas.")
+    );
+  }
+
+  async function slidingConfirm() {
+    if (isSliding) return;
+
+    isSliding = true;
+    isFail = true;
+
     setTimeout(() => {
+      stopActiveMove(bia);
       bia.anims.play(`slide-${direction}`, true);
-    }, 1000);
+    }, velocityControl[speedAnimation].time);
+
+    await sleep(2 * velocityControl[speedAnimation].time, () =>
+      callbackFail("Cuidado com as poças d'água!")
+    );
   }
 
-  function successConfirm() {
+  async function successConfirm() {
+    if (isSuccess) return;
+
+    isSuccess = true;
+
     setTimeout(() => {
+      stopActiveMove(bia);
       bia.anims.play("success", true);
       cyber.anims.play("success", true);
-    }, 1000);
+    }, velocityControl[speedAnimation].time);
+
+    await sleep(2 * velocityControl[speedAnimation].time, () =>
+      callbackSuccess("Você está pronto para o próximo nível.")
+    );
   }
 
-  function fail() {
-    scene.pause();
+  async function play(javascriptCode) {
+    const code = `async function execute(){
+      ${javascriptCode}
+    }
+    execute()`;
+
+    await eval(code);
+    if (!isSuccess && !isFail && !isSliding) {
+      bia.anims.play(direction);
+      await sleep(velocityControl[speedAnimation].time, () => {
+        const text =
+          "Verifique quantos bloquinhos “avance” você colocou no código, conte quantos quadradinhos faltam para eu chegar até o Cyber e programe novamente.";
+        callbackFail(text);
+      });
+    }
+  }
+
+  function pause() {
+    scene?.pause();
+  }
+
+  function reset() {
+    isFail = false;
+    isSliding = false;
+    isSuccess = false;
+    direction = "right";
+    registry?.destroy(); // destroy registry
+    events?.off(); // disable all active events
+    scene?.restart();
+    bia.anims.play("right");
   }
 
   var config = {
@@ -217,26 +282,6 @@ function createGame() {
       calculatePosition(3) + 22,
       "bia"
     );
-
-    // resize frames
-    cyber.setCircle(24, 12, 0);
-    bia.setCircle(24, 5, 42);
-
-    // colliders
-    bia.setCollideWorldBounds(true);
-    bia.body.onWorldBounds = true;
-    this.physics.add.collider(bia, objects, collideConfirm, null, this);
-    this.physics.add.overlap(bia, cyber, successConfirm, null, this);
-    this.physics.add.overlap(bia, water, slidingConfirm, null, this);
-
-    // collide world
-    this.physics.world.on("worldbounds", (body, up, down, left, right) => {
-      console.log("Bateu limites");
-      fail();
-    });
-
-    physics = this.physics;
-    scene = this.scene;
 
     // ANIMATIONS
 
@@ -373,54 +418,55 @@ function createGame() {
       frameRate: 8,
       repeat: -1,
     });
+
+    // initial set
+    bia.anims.play(direction, true);
+    bia.setCollideWorldBounds(true);
+    bia.body.onWorldBounds = true;
+
+    // resize frames
+    cyber.setCircle(24, 12, 0);
+    bia.setCircle(22, 7, 45);
+
+    // colliders
+    this.physics.add.collider(bia, objects, collideConfirm, null, this);
+    this.physics.add.overlap(bia, cyber, successConfirm, null, this);
+    this.physics.add.overlap(bia, water, slidingConfirm, null, this);
+
+    // collide world
+    this.physics.world.on("worldbounds", collideWorldConfirm);
+
+    scene = this.scene;
+    registry = this.registry;
+    events = this.events;
+    scene = this.scene;
   }
 
   async function update() {
-    var distance = Phaser.Math.Distance.Between(
-      bia.x,
-      bia.y,
-      target.x,
-      target.y
-    );
-
-    if (bia.body.speed > 0) {
-      if (distance < 4) {
-        bia.body.reset(target.x, target.y);
-      }
-    }
-
     if (controls.up.isDown) {
-      await turnLeft();
       await moveBia();
-      await moveBia();
-      await turnLeft();
-      await moveBia();
-      // await moveBia();
-      // await moveBia();
-      // await turnLeft();
-      // await moveBia();
-      // await moveBia();
-      // await moveBia();
-      // await moveBia();
-      // await turnLeft();
-      // await moveBia();
-      // await moveBia();
-      // await moveBia();
-      // await turnLeft();
-      // await moveBia();
-      // await moveBia();
     } else if (controls.right.isDown) {
-      turnRight();
+      await turnRight();
     } else if (controls.left.isDown) {
-      turnLeft();
+      await turnLeft();
     } else if (controls.down.isDown) {
-      bia.body.reset(0, 0);
+      reset();
     }
   }
 
   const game = new Phaser.Game(config);
 
-  return game;
+  function createGame() {
+    return game;
+  }
+
+  return {
+    createGame,
+    changeSpeedAnimation,
+    play,
+    pause,
+    reset,
+  };
 }
 
 export default createGame;
