@@ -7,6 +7,7 @@ import "rc-slider/assets/index.css";
 
 // game
 import createGame from "./firstGame";
+import phaserGame from "./PhaserGame";
 
 // styles
 import "./App.css";
@@ -222,7 +223,10 @@ function App() {
     setTextModal({ title, text });
     setIsModalOpen(true);
   }
-
+  // phaserGame()
+  // return (
+  //   <div></div>
+  // )
   return (
     <div className="App">
       <div style={{ display: "flex" }}>
